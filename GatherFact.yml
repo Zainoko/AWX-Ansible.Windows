@@ -1,30 +1,16 @@
 ---
-- hosts: win
+- name: Simple Windows Playbook
+  hosts: windows
+  gather_facts: no
+
   tasks:
-  - name: Get disk facts
-    win_disk_facts:
+    - name: Create a folder
+      win_file:
+        path: C:\DemoFolder
+        state: directory
 
-  - name: Output first disk size
-    debug:
-      var: ansible_facts.disks[0].size
-
-  - name: Convert first system disk into various formats
-    debug:
-      msg: '{{ disksize_gib }} vs {{ disksize_gib_human }}'
-    vars:
-      # Get first system disk
-      disk: '{{ ansible_facts.disks|selectattr("system_disk")|first }}'
-
-      # Show disk size in Gibibytes
-      disksize_gib_human: '{{ disk.size|filesizeformat(true) }}'
-      disksize_gib: '{{ (disk.size/1024|pow(3))|round|int }} GiB'
-
-```yaml
----
-- hosts: win
-  tasks:
-   - name: Get disk facts
-     win_command: wmic cpu get caption, deviceid, name, numberofcores, maxclockspeed, status
-     register: usage
-
-   - debug: msg="{{ usage.stdout }}"
+    - name: Ensure Windows Update service is running
+      win_service:
+        name: wuauserv
+        start_mode: auto
+        state: started
