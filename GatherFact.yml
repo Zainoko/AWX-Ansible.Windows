@@ -1,6 +1,6 @@
 ---
 - name: Simple Windows Playbook
-  hosts: windows
+  hosts: 192.168.62.79
   gather_facts: no
 
   tasks:
