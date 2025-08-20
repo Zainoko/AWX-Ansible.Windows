@@ -1,6 +1,6 @@
 ---
 - name: Simple Windows Playbook
-  hosts: 192.168.27.79
+  hosts: windows
   gather_facts: no
 
   vars:
