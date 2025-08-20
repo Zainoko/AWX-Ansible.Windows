@@ -3,6 +3,9 @@
   hosts: 192.168.62.79
   gather_facts: no
 
+  vars:
+    ansible_winrm_tmpdir: C:\Windows\Temp\.ansible\tmp  # Set temporary directory to a valid path
+
   tasks:
     - name: Create a folder
       win_file:
