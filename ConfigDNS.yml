@@ -1,19 +1,41 @@
 ---
-- name: Simple Windows Playbook
-  hosts: windows
+- name: Configure DNS Server and Add A Record on Windows via SSH
+  hosts: Server
   gather_facts: no
-
   vars:
-    ansible_winrm_tmpdir: C:\Windows\Temp\.ansible\tmp  # Set temporary directory to a valid path
+    dns_zone: "Webserver.com"
+    dns_record_name: "Webserver"
+    dns_record_ip: "192.168.101.172"
 
   tasks:
-    - name: Create a folder
-      win_file:
-        path: C:\DemoFolder
-        state: directory
 
-    - name: Ensure Windows Update service is running
-      win_service:
-        name: wuauserv
-        start_mode: auto
-        state: started
+    - name: Ensure DNS Server feature is installed
+      ansible.windows.win_shell: |
+        Import-Module ServerManager
+        if (-not (Get-WindowsFeature -Name DNS).Installed) {
+            Install-WindowsFeature -Name DNS -IncludeManagementTools -Restart:$false
+        }
+
+    - name: Create Forward Lookup Zone if not exists
+      ansible.windows.win_shell: |
+        Import-Module DnsServer
+        if (-not (Get-DnsServerZone -Name "{{ dns_zone }}" -ErrorAction SilentlyContinue)) {
+            Add-DnsServerPrimaryZone -Name "{{ dns_zone }}" -ZoneFile "{{ dns_zone }}.dns" -DynamicUpdate Secure
+        }
+
+    - name: Add A Record for Webserver
+      ansible.windows.win_shell: |
+        Import-Module DnsServer
+        if (-not (Get-DnsServerResourceRecord -ZoneName "{{ dns_zone }}" -Name "{{ dns_record_name }}" -RRType "A" -ErrorAction SilentlyContinue)) {
+            Add-DnsServerResourceRecordA -Name "{{ dns_record_name }}" -ZoneName "{{ dns_zone }}" -IPv4Address "{{ dns_record_ip }}"
+        }
+
+    - name: Verify A Record
+      ansible.windows.win_shell: |
+        Import-Module DnsServer
+        Get-DnsServerResourceRecord -ZoneName "{{ dns_zone }}" -Name "{{ dns_record_name }}"
+      register: dns_result
+
+    - name: Show DNS record
+      ansible.builtin.debug:
+        var: dns_result.stdout
