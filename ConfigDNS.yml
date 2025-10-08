@@ -66,6 +66,22 @@
       args:
         executable: powershell
 
+    - name: Add A record for local DNS server
+      ansible.windows.win_shell: |
+        Import-Module DnsServer
+        $forward_zone_name = "local"
+        $dns_server_name = "DNS-Server-AWX"
+        $dns_server_ip = "192.168.101.252"
+        if (-not (Get-DnsServerResourceRecord -ZoneName $forward_zone_name -Name $dns_server_name -RRType "A" -ErrorAction SilentlyContinue)) {
+            Add-DnsServerResourceRecordA -Name $dns_server_name -ZoneName $forward_zone_name -IPv4Address $dns_server_ip
+            Write-Output "A record $dns_server_name.$forward_zone_name -> $dns_server_ip created."
+        } else {
+            Write-Output "A record $dns_server_name.$forward_zone_name already exists."
+        }
+      args:
+        executable: powershell
+
+
     # 6️⃣ Add A Record
     - name: Add A record for webserver
       ansible.windows.win_shell: |
