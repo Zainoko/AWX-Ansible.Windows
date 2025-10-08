@@ -1,8 +1,0 @@
----
-- name: Test Connectivity to Windows Host
-  hosts: windows
-  gather_facts: no
-
-  tasks:
-    - name: Test if Windows host is reachable
-      win_ping:

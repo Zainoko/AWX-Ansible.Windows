@@ -1,0 +1,24 @@
+---
+- name: Test connectivity to Windows Server using SSH
+  hosts: windows
+  gather_facts: no
+
+  tasks:
+    - name: Check basic connectivity (ping)
+      ansible.builtin.ping:
+
+    - name: Run PowerShell command to check hostname
+      ansible.builtin.command: hostname
+      register: hostname_result
+
+    - name: Show hostname output
+      ansible.builtin.debug:
+        msg: "Connected to Windows host: {{ hostname_result.stdout }}"
+
+    - name: Check system info via PowerShell
+      ansible.builtin.shell: "Get-ComputerInfo | Select-Object CsName, OsName, OsVersion | ConvertTo-Json"
+      register: sysinfo
+
+    - name: Display system info
+      ansible.builtin.debug:
+        var: sysinfo.stdout
