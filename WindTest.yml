@@ -4,10 +4,10 @@
   gather_facts: no
 
   tasks:
-    - name: Verify connection with PowerShell
-      ansible.builtin.raw: "Write-Output 'Hello from PowerShell on Windows via SSH'"
-      register: result
+    - name: Test PowerShell execution
+      ansible.windows.win_shell: "Write-Output 'Hello from PowerShell over SSH'"
+      register: output
 
-    - name: Display output
+    - name: Show result
       ansible.builtin.debug:
-        var: result.stdout
+        var: output.stdout
