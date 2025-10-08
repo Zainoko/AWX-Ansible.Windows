@@ -1,32 +1,26 @@
 ---
-- name: Configure DNS Server and Add A Record on Windows via SSH
+- name: Configure DNS Server with Forward and Reverse Lookup Zones
   hosts: Server
   gather_facts: no
   vars:
-    dns_zone: "Webserver.com"
-    dns_record_name: "Webserver"
-    dns_record_ip: "192.168.101.172"
+    forward_zone: "local"
+    host_name: "webserver"
+    web_server_ip: "192.168.101.172"
+    # Extract network from IP for reverse zone
+    reverse_zone_network: "192.168.101.0/24"
+    reverse_zone_name: "101.168.192.in-addr.arpa"
 
   tasks:
-    - name: Check if DNS Server feature is already installed
-      ansible.windows.win_shell: |
-        (Get-WindowsFeature -Name DNS).Installed
-      register: dns_installed
-
-    - name: Install DNS Server feature (with reboot handling)
+    - name: Install DNS Server role if not installed
       ansible.windows.win_feature:
         name: DNS
         include_management_tools: yes
         state: present
       register: dns_install
-      when: not dns_installed.stdout | bool
 
-    - name: Reboot if DNS was just installed
+    - name: Reboot if DNS was installed
       ansible.windows.win_reboot:
         msg: "Rebooting after DNS Server installation"
-        connect_timeout: 60
-        pre_reboot_delay: 30
-        post_reboot_delay: 60
       when: dns_install is changed
 
     - name: Wait for server to come back online after reboot
@@ -37,26 +31,70 @@
         timeout: 300
       when: dns_install is changed
 
-    - name: Create Forward Lookup Zone if not exists
+    - name: Create Forward Lookup Zone 'local'
+      ansible.windows.win_dns_zone:
+        name: "{{ forward_zone }}"
+        state: present
+        zone_type: Primary
+        dynamic_update: Secure
+
+    - name: Create Reverse Lookup Zone
+      ansible.windows.win_dns_zone:
+        name: "{{ reverse_zone_name }}"
+        state: present
+        zone_type: Primary
+        dynamic_update: Secure
+        network: "{{ reverse_zone_network }}"
+
+    - name: Add A Record for webserver in forward zone
+      ansible.windows.win_dns_record:
+        zone: "{{ forward_zone }}"
+        record: "{{ host_name }}"
+        type: A
+        value: "{{ web_server_ip }}"
+        state: present
+
+    - name: Add PTR Record in reverse zone
+      ansible.windows.win_dns_record:
+        zone: "{{ reverse_zone_name }}"
+        record: "172"  # Last octet of the IP address
+        type: PTR
+        value: "{{ host_name }}.{{ forward_zone }}."
+        state: present
+
+    - name: Configure DNS forwarders
       ansible.windows.win_shell: |
         Import-Module DnsServer
-        if (-not (Get-DnsServerZone -Name "{{ dns_zone }}" -ErrorAction SilentlyContinue)) {
-            Add-DnsServerPrimaryZone -Name "{{ dns_zone }}" -ZoneFile "{{ dns_zone }}.dns" -DynamicUpdate Secure
-        }
+        Set-DnsServerForwarder -IPAddress 8.8.8.8,1.1.1.1
 
-    - name: Add A Record for Webserver
+    - name: Verify Forward Lookup
       ansible.windows.win_shell: |
-        Import-Module DnsServer
-        if (-not (Get-DnsServerResourceRecord -ZoneName "{{ dns_zone }}" -Name "{{ dns_record_name }}" -RRType "A" -ErrorAction SilentlyContinue)) {
-            Add-DnsServerResourceRecordA -Name "{{ dns_record_name }}" -ZoneName "{{ dns_zone }}" -IPv4Address "{{ dns_record_ip }}"
-        }
+        nslookup {{ host_name }}.{{ forward_zone }}
+      register: forward_lookup
 
-    - name: Verify A Record
+    - name: Verify Reverse Lookup
       ansible.windows.win_shell: |
-        Import-Module DnsServer
-        Get-DnsServerResourceRecord -ZoneName "{{ dns_zone }}" -Name "{{ dns_record_name }}"
-      register: dns_result
+        nslookup {{ web_server_ip }}
+      register: reverse_lookup
 
-    - name: Show DNS record
+    - name: Show Forward Lookup Result
       ansible.builtin.debug:
-        var: dns_result.stdout
+        msg: "Forward lookup: {{ forward_lookup.stdout }}"
+
+    - name: Show Reverse Lookup Result
+      ansible.builtin.debug:
+        msg: "Reverse lookup: {{ reverse_lookup.stdout }}"
+
+    - name: Display DNS configuration summary
+      ansible.builtin.debug:
+        msg: |
+          DNS Configuration Complete!
+          ===========================
+          Forward Zone: {{ forward_zone }}
+          Host Record: {{ host_name }}.{{ forward_zone }} -> {{ web_server_ip }}
+          Reverse Zone: {{ reverse_zone_name }}
+          PTR Record: {{ web_server_ip }} -> {{ host_name }}.{{ forward_zone }}.
+          
+          Test with:
+          nslookup webserver.local
+          nslookup 192.168.101.172
