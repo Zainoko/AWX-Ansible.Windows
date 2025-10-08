@@ -4,7 +4,7 @@
   gather_facts: no
   vars:
     forward_zone: "local"
-    reverse_network: "192.168.101"
+    reverse_network: "101.168.192"
     host_name: "webserver"
     web_server_ip: "192.168.101.172"
     dns_forwarders:
