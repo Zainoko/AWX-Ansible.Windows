@@ -45,15 +45,16 @@
     - name: Create Reverse Lookup Zone if not exists
       ansible.windows.win_shell: |
         Import-Module DnsServer
-        $reverse_zone_name = "{{ reverse_network }}.in-addr.arpa"
+        $reverse_zone_name = "192.168.101.in-addr.arpa"
         if (-not (Get-DnsServerZone -Name $reverse_zone_name -ErrorAction SilentlyContinue)) {
-            Add-DnsServerPrimaryZone -NetworkID "{{ reverse_network }}.0/24" -ZoneFile "$($reverse_zone_name).dns" -DynamicUpdate None
+            Add-DnsServerPrimaryZone -NetworkID "192.168.101.0/24" -ZoneFile "$($reverse_zone_name).dns" -DynamicUpdate None
             Write-Output "Reverse zone $reverse_zone_name created."
         } else {
             Write-Output "Reverse zone $reverse_zone_name already exists."
         }
       args:
         executable: powershell
+
 
     # 5️⃣ Configure DNS Forwarders
     - name: Configure DNS forwarders
