@@ -4,11 +4,10 @@
   gather_facts: no
 
   tasks:
-    - name: Check basic connectivity (PowerShell ping)
-      ansible.builtin.raw: "Test-Connection -Count 1 localhost | Select-Object -ExpandProperty Status"
-      register: ping_result
-      changed_when: false
+    - name: Verify connection with PowerShell
+      ansible.builtin.raw: "Write-Output 'Hello from PowerShell on Windows via SSH'"
+      register: result
 
-    - name: Show ping result
+    - name: Display output
       ansible.builtin.debug:
-        msg: "Ping result: {{ ping_result.stdout | trim }}"
+        var: result.stdout
