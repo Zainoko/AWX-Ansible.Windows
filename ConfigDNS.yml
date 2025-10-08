@@ -1,11 +1,15 @@
 ---
-- name: Configure DNS using win_shell (Guaranteed to Work)
+- name: Configure DNS using win_shell (With Forwarders)
   hosts: Server
   gather_facts: no
   vars:
     forward_zone: "local"
     host_name: "webserver"
     web_server_ip: "192.168.101.172"
+    dns_forwarders:
+      - "8.8.8.8"
+      - "1.1.1.1"
+      - "8.8.4.4"
 
   tasks:
     - name: Install and configure DNS in one task
@@ -33,6 +37,10 @@
         } else {
             Write-Output "Reverse zone '101.168.192.in-addr.arpa' already exists"
         }
+        
+        # Configure DNS forwarders
+        Set-DnsServerForwarder -IPAddress {{ dns_forwarders | join(',') }}
+        Write-Output "Configured DNS forwarders: {{ dns_forwarders | join(', ') }}"
         
         # Add A record
         try {
