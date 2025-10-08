@@ -1,6 +1,6 @@
 ---
 - name: Test connectivity to Windows Server using SSH
-  hosts: windows
+  hosts: Server
   gather_facts: no
 
   tasks:
