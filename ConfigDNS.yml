@@ -1,9 +1,10 @@
 ---
-- name: Configure DNS with forwarders and A record
+- name: Full DNS Configuration with Forwarders and Reverse Zone
   hosts: Server
   gather_facts: no
   vars:
     forward_zone: "local"
+    reverse_network: "192.168.101"
     host_name: "webserver"
     web_server_ip: "192.168.101.172"
     dns_forwarders:
@@ -12,55 +13,74 @@
       - "8.8.4.4"
 
   tasks:
-    - name: Ensure DNS Server feature is installed
+
+    - name: Install DNS Server role
       ansible.windows.win_feature:
         name: DNS
         include_management_tools: yes
         state: present
 
-    - name: Configure DNS zones, records, and forwarders
+    - name: Ensure DNS service is running
+      ansible.windows.win_service:
+        name: DNS
+        start_mode: auto
+        state: started
+
+    - name: Create Forward Lookup Zone if not exists
       ansible.windows.win_shell: |
         Import-Module DnsServer
-
-        # Create forward zone if not exists
         if (-not (Get-DnsServerZone -Name "{{ forward_zone }}" -ErrorAction SilentlyContinue)) {
             Add-DnsServerPrimaryZone -Name "{{ forward_zone }}" -DynamicUpdate None
-            Write-Output "Created forward zone: {{ forward_zone }}"
+            Write-Output "Forward zone {{ forward_zone }} created."
         } else {
-            Write-Output "Forward zone '{{ forward_zone }}' already exists"
+            Write-Output "Forward zone {{ forward_zone }} already exists."
         }
+      args:
+        executable: powershell
 
-        # Create reverse zone if not exists
-        if (-not (Get-DnsServerZone -Name "101.168.192.in-addr.arpa" -ErrorAction SilentlyContinue)) {
-            Add-DnsServerPrimaryZone -NetworkID "192.168.101.0/24" -DynamicUpdate None
-            Write-Output "Created reverse zone: 101.168.192.in-addr.arpa"
+    - name: Create Reverse Lookup Zone if not exists
+      ansible.windows.win_shell: |
+        Import-Module DnsServer
+        $reverse_zone_name = "{{ reverse_network }}.in-addr.arpa"
+        if (-not (Get-DnsServerZone -Name $reverse_zone_name -ErrorAction SilentlyContinue)) {
+            Add-DnsServerPrimaryZone -NetworkID "{{ reverse_network }}.0/24" -DynamicUpdate None
+            Write-Output "Reverse zone $reverse_zone_name created."
         } else {
-            Write-Output "Reverse zone '101.168.192.in-addr.arpa' already exists"
+            Write-Output "Reverse zone $reverse_zone_name already exists."
         }
+      args:
+        executable: powershell
 
-        # Configure DNS forwarders
+    - name: Configure DNS forwarders
+      ansible.windows.win_shell: |
+        Import-Module DnsServer
         Set-DnsServerForwarder -IPAddress {{ dns_forwarders | join(',') }}
-        Write-Output "Configured DNS forwarders: {{ dns_forwarders | join(', ') }}"
+        Write-Output "DNS forwarders set: {{ dns_forwarders | join(', ') }}"
+      args:
+        executable: powershell
 
-        # Add A record
-        try {
-            Add-DnsServerResourceRecordA -Name "{{ host_name }}" -ZoneName "{{ forward_zone }}" -IPv4Address "{{ web_server_ip }}" -ErrorAction Stop
-            Write-Output "Added A record: {{ host_name }}.{{ forward_zone }} -> {{ web_server_ip }}"
-        } catch {
-            Write-Output "A record already exists or error: $($_.Exception.Message)"
+    - name: Add A record for webserver
+      ansible.windows.win_shell: |
+        Import-Module DnsServer
+        if (-not (Get-DnsServerResourceRecord -ZoneName "{{ forward_zone }}" -Name "{{ host_name }}" -RRType "A" -ErrorAction SilentlyContinue)) {
+            Add-DnsServerResourceRecordA -Name "{{ host_name }}" -ZoneName "{{ forward_zone }}" -IPv4Address "{{ web_server_ip }}"
+            Write-Output "A record {{ host_name }}.{{ forward_zone }} -> {{ web_server_ip }} created."
+        } else {
+            Write-Output "A record {{ host_name }}.{{ forward_zone }} already exists."
         }
+      args:
+        executable: powershell
 
-        # Add PTR record
-        try {
-            Add-DnsServerResourceRecordPtr -Name "172" -ZoneName "101.168.192.in-addr.arpa" -PtrDomainName "{{ host_name }}.{{ forward_zone }}." -ErrorAction Stop
-            Write-Output "Added PTR record: {{ web_server_ip }} -> {{ host_name }}.{{ forward_zone }}."
-        } catch {
-            Write-Output "PTR record already exists or error: $($_.Exception.Message)"
+    - name: Add PTR record for reverse zone
+      ansible.windows.win_shell: |
+        Import-Module DnsServer
+        $reverse_zone_name = "{{ reverse_network }}.in-addr.arpa"
+        $last_octet = "{{ web_server_ip.split('.')[-1] }}"
+        if (-not (Get-DnsServerResourceRecord -ZoneName $reverse_zone_name -Name $last_octet -RRType "PTR" -ErrorAction SilentlyContinue)) {
+            Add-DnsServerResourceRecordPtr -Name $last_octet -ZoneName $reverse_zone_name -PtrDomainName "{{ host_name }}.{{ forward_zone }}."
+            Write-Output "PTR record {{ web_server_ip }} -> {{ host_name }}.{{ forward_zone }} created."
+        } else {
+            Write-Output "PTR record {{ web_server_ip }} already exists."
         }
-
-        Write-Output "✅ DNS configuration completed successfully"
-      register: dns_setup
-
-    - name: Show DNS setup result
-      debug:
-        var: dns_setup.stdout
+      args:
+        executable: powershell
