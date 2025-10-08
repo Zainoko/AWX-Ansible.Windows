@@ -1,5 +1,5 @@
 ---
-- name: Full DNS Configuration with Forwarders and Reverse Zone
+- name: Full DNS Configuration (Standalone Server)
   hosts: Server
   gather_facts: no
   vars:
@@ -14,36 +14,40 @@
 
   tasks:
 
+    # 1️⃣ Install DNS Role
     - name: Install DNS Server role
       ansible.windows.win_feature:
         name: DNS
         include_management_tools: yes
         state: present
 
+    # 2️⃣ Ensure DNS service is running
     - name: Ensure DNS service is running
       ansible.windows.win_service:
         name: DNS
         start_mode: auto
         state: started
 
+    # 3️⃣ Create Forward Lookup Zone
     - name: Create Forward Lookup Zone if not exists
       ansible.windows.win_shell: |
         Import-Module DnsServer
         if (-not (Get-DnsServerZone -Name "{{ forward_zone }}" -ErrorAction SilentlyContinue)) {
-            Add-DnsServerPrimaryZone -Name "{{ forward_zone }}" -DynamicUpdate None
-            Write-Output "Forward zone {{ forward_zone }} created."
+            Add-DnsServerPrimaryZone -Name "{{ forward_zone }}" -ZoneFile "{{ forward_zone }}.dns" -DynamicUpdate None
+            Write-Output "Forward zone '{{ forward_zone }}' created."
         } else {
-            Write-Output "Forward zone {{ forward_zone }} already exists."
+            Write-Output "Forward zone '{{ forward_zone }}' already exists."
         }
       args:
         executable: powershell
 
+    # 4️⃣ Create Reverse Lookup Zone
     - name: Create Reverse Lookup Zone if not exists
       ansible.windows.win_shell: |
         Import-Module DnsServer
         $reverse_zone_name = "{{ reverse_network }}.in-addr.arpa"
         if (-not (Get-DnsServerZone -Name $reverse_zone_name -ErrorAction SilentlyContinue)) {
-            Add-DnsServerPrimaryZone -NetworkID "{{ reverse_network }}.0/24" -DynamicUpdate None
+            Add-DnsServerPrimaryZone -NetworkID "{{ reverse_network }}.0/24" -ZoneFile "$($reverse_zone_name).dns" -DynamicUpdate None
             Write-Output "Reverse zone $reverse_zone_name created."
         } else {
             Write-Output "Reverse zone $reverse_zone_name already exists."
@@ -51,6 +55,7 @@
       args:
         executable: powershell
 
+    # 5️⃣ Configure DNS Forwarders
     - name: Configure DNS forwarders
       ansible.windows.win_shell: |
         Import-Module DnsServer
@@ -59,6 +64,7 @@
       args:
         executable: powershell
 
+    # 6️⃣ Add A Record
     - name: Add A record for webserver
       ansible.windows.win_shell: |
         Import-Module DnsServer
@@ -71,6 +77,7 @@
       args:
         executable: powershell
 
+    # 7️⃣ Add PTR Record
     - name: Add PTR record for reverse zone
       ansible.windows.win_shell: |
         Import-Module DnsServer
