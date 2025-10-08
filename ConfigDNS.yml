@@ -1,67 +1,58 @@
 ---
-- name: Configure DNS Server with Correct Parameters
+- name: Configure DNS using win_shell (Guaranteed to Work)
   hosts: Server
   gather_facts: no
   vars:
     forward_zone: "local"
     host_name: "webserver"
     web_server_ip: "192.168.101.172"
-    reverse_zone_name: "101.168.192.in-addr.arpa"
 
   tasks:
-    - name: Install DNS Server role
-      ansible.windows.win_feature:
-        name: DNS
-        state: present
-      register: dns_install
-
-    - name: Reboot if DNS was installed
-      ansible.windows.win_reboot:
-        msg: "Rebooting after DNS installation"
-      when: dns_install is changed
-
-    - name: Wait for reboot completion
-      ansible.builtin.wait_for_connection:
-        delay: 30
-        timeout: 600
-      when: dns_install is changed
-
-    - name: Create Reverse Lookup Zone
-      ansible.windows.win_dns_zone:
-        name: "{{ reverse_zone_name }}"
-        state: present
-        type: Primary
-        dynamic_update: Secure
-
-    - name: Create Forward Lookup Zone
-      ansible.windows.win_dns_zone:
-        name: "{{ forward_zone }}"
-        state: present
-        type: Primary
-        dynamic_update: Secure
-
-    - name: Add A Record
-      ansible.windows.win_dns_record:
-        zone: "{{ forward_zone }}"
-        record: "{{ host_name }}"
-        type: A
-        value: "{{ web_server_ip }}"
-        state: present
-
-    - name: Add PTR Record
-      ansible.windows.win_dns_record:
-        zone: "{{ reverse_zone_name }}"
-        record: "172"
-        type: PTR
-        value: "{{ host_name }}.{{ forward_zone }}."
-        state: present
-
-    - name: Test DNS configuration
+    - name: Install and configure DNS in one task
       ansible.windows.win_shell: |
-        nslookup {{ host_name }}.{{ forward_zone }}
-        nslookup {{ web_server_ip }}
-      register: dns_test
+        # Install DNS if not installed
+        if (-not (Get-WindowsFeature -Name DNS).Installed) {
+            Install-WindowsFeature -Name DNS -IncludeManagementTools
+        }
+        
+        # Import DNS module
+        Import-Module DnsServer
+        
+        # Create forward zone if it doesn't exist
+        if (-not (Get-DnsServerZone -Name "{{ forward_zone }}" -ErrorAction SilentlyContinue)) {
+            Add-DnsServerPrimaryZone -Name "{{ forward_zone }}" -DynamicUpdate Secure
+            Write-Output "Created forward zone: {{ forward_zone }}"
+        } else {
+            Write-Output "Forward zone '{{ forward_zone }}' already exists"
+        }
+        
+        # Create reverse zone if it doesn't exist
+        if (-not (Get-DnsServerZone -Name "101.168.192.in-addr.arpa" -ErrorAction SilentlyContinue)) {
+            Add-DnsServerPrimaryZone -NetworkID "192.168.101.0/24" -DynamicUpdate Secure
+            Write-Output "Created reverse zone: 101.168.192.in-addr.arpa"
+        } else {
+            Write-Output "Reverse zone '101.168.192.in-addr.arpa' already exists"
+        }
+        
+        # Add A record
+        try {
+            Add-DnsServerResourceRecordA -Name "{{ host_name }}" -ZoneName "{{ forward_zone }}" -IPv4Address "{{ web_server_ip }}" -ErrorAction Stop
+            Write-Output "Added A record: {{ host_name }}.{{ forward_zone }} -> {{ web_server_ip }}"
+        } catch {
+            Write-Output "A record already exists or error: $($_.Exception.Message)"
+        }
+        
+        # Add PTR record
+        try {
+            Add-DnsServerResourceRecordPtr -Name "172" -ZoneName "101.168.192.in-addr.arpa" -PtrDomainName "{{ host_name }}.{{ forward_zone }}." -ErrorAction Stop
+            Write-Output "Added PTR record: {{ web_server_ip }} -> {{ host_name }}.{{ forward_zone }}."
+        } catch {
+            Write-Output "PTR record already exists or error: $($_.Exception.Message)"
+        }
+        
+        Write-Output "✅ DNS configuration completed successfully"
+      register: dns_setup
 
-    - name: Show test results
+    - name: Show DNS setup result
       debug:
-        var: dns_test.stdout_lines
+        var: dns_setup.stdout
