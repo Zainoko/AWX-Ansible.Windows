@@ -1,6 +1,6 @@
 ---
 - name: Configure DNS Server on Windows
-  hosts: windows_dns
+  hosts: Server
   gather_facts: no
   vars:
     # 🌐 Editable Variables (Change here only)
