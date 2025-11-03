@@ -10,8 +10,8 @@
       - "8.8.8.8"
       - "1.1.1.1"
     dns_server_name: "DNS-Server-AWX"
-    dns_server_ip: "192.168.1.13"
-    web_server_ip: "192.168.1.12"
+    dns_server_ip: "192.168.1.4"
+    web_server_ip: "192.168.1.3"
     host_name: "webserver"
 
   tasks:
