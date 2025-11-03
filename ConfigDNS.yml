@@ -95,7 +95,7 @@
         executable: powershell
 
     # 8️⃣ Add PTR Record for Reverse Zone
-    - name: Add PTR record for reverse zone
+    - name: Add PTR record for WebServer
       ansible.windows.win_shell: |
         Import-Module DnsServer
         $reverse_zone_name = "{{ reverse_network }}.in-addr.arpa"
@@ -105,6 +105,20 @@
             Write-Output "PTR record {{ web_server_ip }} -> {{ host_name }}.{{ forward_zone }} created."
         } else {
             Write-Output "PTR record {{ web_server_ip }} already exists."
+        }
+      args:
+        executable: powershell
+
+    - name: Add PTR record for DNS Server
+      ansible.windows.win_shell: |
+        Import-Module DnsServer
+        $reverse_zone_name = "{{ reverse_network }}.in-addr.arpa"
+        $last_octet = "{{ dns_server_ip.split('.')[-1] }}"
+        if (-not (Get-DnsServerResourceRecord -ZoneName $reverse_zone_name -Name $last_octet -RRType "PTR" -ErrorAction SilentlyContinue)) {
+            Add-DnsServerResourceRecordPtr -Name $last_octet -ZoneName $reverse_zone_name -PtrDomainName "{{ dns_server_name }}.{{ forward_zone }}."
+            Write-Output "PTR record {{ dns_server_ip }} -> {{ dns_server_name }}.{{ forward_zone }} created."
+        } else {
+            Write-Output "PTR record {{ dns_server_ip }} already exists."
         }
       args:
         executable: powershell
